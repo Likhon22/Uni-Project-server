@@ -1,11 +1,14 @@
 const express = require("express");
 const app = express();
 const cors = require("cors");
+const mysql = require("mysql2");
+const bcrypt = require("bcrypt");
 const port = process.env.PORT || 5000;
+const knowledgeBase = require("./knowledgeBase");
 app.use(express.json());
 app.use(cors());
+
 // database
-const mysql = require("mysql2");
 
 const db = mysql.createConnection({
   host: "localhost",
@@ -21,8 +24,77 @@ try {
 } catch (err) {
   console.log(err);
 }
+
+// chatbot
+app.get("/chatbot", async (req, res) => {
+  const question = req.query.question;
+
+  const formattedQuestion = question.toLowerCase().trim();
+
+  const formattedQuestionWithQuestionMark = formattedQuestion.endsWith("?")
+    ? formattedQuestion
+    : formattedQuestion + "?";
+
+  const normalizedKnowledgeBase = {};
+  for (const key in knowledgeBase) {
+    const normalizeKey = key.trim().toLowerCase();
+    const normalizeValue = knowledgeBase[key].trim();
+    normalizedKnowledgeBase[normalizeKey] = normalizeValue;
+  }
+  if (
+    normalizedKnowledgeBase.hasOwnProperty(formattedQuestionWithQuestionMark)
+  ) {
+    res.json(normalizedKnowledgeBase[formattedQuestionWithQuestionMark]);
+  } else {
+    res.status(404).json("Sorry, I don't have an answer to that question.");
+  }
+});
 app.get("/", (req, res) => {
   res.send("running");
+});
+// foods
+// insert foods
+app.post("/foods", (req, res) => {
+  const {
+    email,
+    user_name,
+    user_photo,
+    status,
+    additional_notes,
+    expire_date,
+    location,
+    quantity,
+    food_name,
+    food_photo,
+    category,
+    category_image,
+  } = req.body;
+  const query =
+    "INSERT INTO foods (email, user_name, user_photo, status, additional_notes, expire_date, location, quantity, food_name, food_photo, category, category_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+  db.query(
+    query,
+    [
+      email,
+      user_name,
+      user_photo,
+      status,
+      additional_notes,
+      expire_date,
+      location,
+      quantity,
+      food_name,
+      food_photo,
+      category,
+      category_image,
+    ],
+    (err, results) => {
+      if (err) {
+        console.log(err);
+      }
+      res.send(results);
+    }
+  );
 });
 
 app.get("/foods", (req, res) => {
@@ -34,7 +106,401 @@ app.get("/foods", (req, res) => {
     res.send(data);
   });
 });
+// unique category
+app.get("/unique-categories", (req, res) => {
+  const query = "SELECT DISTINCT category, category_image FROM foods ";
 
+  db.query(query, (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+
+    res.send(results);
+  });
+});
+// foods category
+app.get("/foods/:category", async (req, res) => {
+  const category = req.params.category;
+  const orderBy = req.query.sort;
+
+  let food = `SELECT * FROM foods WHERE category=?`;
+  if (orderBy) {
+    food += `ORDER BY ${orderBy}`;
+  }
+  db.query(food, [category], (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+    res.send(results);
+  });
+});
+// foods for donor
+app.get("/foods/donor/:email", async (req, res) => {
+  const email = req.params.email;
+
+  const query = "SELECT * FROM foods WHERE   email=?";
+  db.query(query, [email], async (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+    res.send(results);
+  });
+});
+// delete food
+app.delete("/foods/:id", async (req, res) => {
+  const id = req.params.id;
+  const query = "DELETE FROM foods WHERE id=?";
+  db.query(query, [id], async (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+    res.send(results);
+  });
+});
+// getting single food
+app.get("/foods/single-foods/:id", async (req, res) => {
+  const id = req.params.id;
+  const query = "SELECT * FROM foods WHERE id=?";
+  db.query(query, [id], async (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+    res.send(results[0]);
+  });
+});
+
+// update food
+app.put("/foods/:id", async (req, res) => {
+  const id = req.params.id;
+  const {
+    category,
+    additional_notes,
+    expire_date,
+    location,
+    quantity,
+    food_name,
+    food_photo,
+    category_image,
+  } = req.body;
+  const query =
+    "UPDATE foods SET category = ?, additional_notes = ?, expire_date = ?, location = ?, quantity = ?, food_name = ?, food_photo = ?, category_image = ? WHERE id = ?";
+  db.query(
+    query,
+    [
+      category,
+      additional_notes,
+      expire_date,
+      location,
+      quantity,
+      food_name,
+      food_photo,
+      category_image,
+      id,
+    ],
+    (err, results) => {
+      if (err) {
+        console.log(err);
+      }
+      res.send(results);
+    }
+  );
+});
+// foods  update status
+app.put("/foods/update/:id", async (req, res) => {
+  const id = req.params.id;
+  const status = req.body.status;
+  console.log(id, status, "update food");
+  const query = "UPDATE foods SET status =? WHERE id =?";
+
+  db.query(query, [status, id], (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+    res.send(results);
+  });
+});
+
+// manage foods
+app.post("/manage-food", async (req, res) => {
+  const {
+    food_id,
+    status,
+    deliveryStatus,
+    recipientEmail,
+    recipientName,
+    recipientImage,
+    donorName,
+    donorEmail,
+    donorImage,
+    additional_notes,
+    expire_date,
+    location,
+    quantity,
+    food_name,
+    food_photo,
+    category,
+    category_image,
+  } = req.body;
+  const manageQuery = `INSERT INTO manage_food (
+      food_id,
+      status,
+      deliveryStatus,
+      recipientEmail,
+      recipientName,
+      recipientImage,
+      donorName,
+      donorEmail,
+      donorImage,
+      additional_notes,
+      expire_date,
+      location,
+      quantity,
+      food_name,
+      food_photo,
+      category,
+      category_image
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  db.query(
+    manageQuery,
+    [
+      food_id,
+      status,
+      deliveryStatus,
+      recipientEmail,
+      recipientName,
+      recipientImage,
+      donorName,
+      donorEmail,
+      donorImage,
+      additional_notes,
+      expire_date,
+      location,
+      quantity,
+      food_name,
+      food_photo,
+      category,
+      category_image,
+    ],
+    (err, results) => {
+      if (err) {
+        console.log(err);
+      }
+
+      res.send(results);
+    }
+  );
+});
+// getting manage-food for user
+app.get("/manage-food/:email", async (req, res) => {
+  const email = req.params.email;
+
+  const query = "SELECT * FROM manage_food WHERE recipientEmail=?";
+  db.query(query, [email], (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+    res.send(results);
+  });
+});
+// manage-food for donor
+
+app.get("/manage-food/donor/:email", async (req, res) => {
+  const email = req.params.email;
+
+  const query = "SELECT * FROM manage_food WHERE donorEmail=?";
+  db.query(query, [email], (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+    res.send(results);
+  });
+});
+// delete manage foods
+
+app.delete("/manage-food/:id", async (req, res) => {
+  const id = req.params.id;
+
+  const query = "DELETE FROM manage_food WHERE food_id=?";
+  db.query(query, [id], async (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+    res.send(results);
+  });
+});
+
+// update manage food
+app.put("/manage-food/:id", async (req, res) => {
+  const id = req.params.id;
+  const status = req.body.status;
+  console.log(status, "manage food");
+
+  const query = "UPDATE manage_food SET status =? WHERE id =?";
+
+  db.query(query, [status, id], (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+    res.send(results);
+  });
+});
+// update deliveryStatus
+app.put("/manage-food/delivery/:id", async (req, res) => {
+  const id = req.params.id;
+  const deliveryStatus = req.body.status;
+  const query = "UPDATE manage_food SET deliveryStatus=? WHERE id=?";
+  db.query(query, [deliveryStatus, id], (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+    res.send(results);
+  });
+});
+// register
+app.post("/register", async (req, res) => {
+  const username = req.body.username;
+  const email = req.body.email;
+  const password = req.body.password;
+  const userImage = req.body.userImage;
+  const role = req.body.role;
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  const query =
+    "INSERT INTO users (username,email,password,role,userImage) VALUES (?,?,?,?,?)";
+  db.query(
+    query,
+    [username, email, hashedPassword, role, userImage],
+    (err, result) => {
+      if (err) {
+        if (err.code === "ER_DUP_ENTRY") {
+          return res.status(400).send({ message: "Email already exists" });
+        } else {
+          console.log(err);
+          return res.status(500).send({ message: "Failed to register user" });
+        }
+      } else {
+        const user = { email, username, role, userImage };
+        return res
+          .status(201)
+          .send({ message: "User registered successfully", user });
+      }
+    }
+  );
+});
+// login
+app.post("/login", async (req, res) => {
+  const email = req.body.email;
+  const password = req.body.password;
+
+  const username = req.body.username;
+  const userImage = req.body.userImage;
+  const role = req.body.role;
+  console.log(typeof password);
+  const query = "SELECT * FROM users WHERE email=?";
+  db.query(query, [email], async (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+    if (results.length === 0) {
+      return res.status(401).send({ message: "Invalid Email" });
+    }
+    const userData = results[0];
+
+    const isPasswordValid = await bcrypt.compare(password, userData.password);
+
+    if (!isPasswordValid) {
+      return res.status(401).send({ message: "Invalid Password" });
+    }
+    const user = { email, userImage, username, role };
+    return res.status(200).send({ message: "Login Successful", user });
+    // return res.status(200).send({ message: "Login successful", user });
+  });
+});
+// logout
+app.post("/logout", (req, res) => {
+  res.status(200).send({ message: "Logout successful" });
+});
+
+// stats
+
+// user-stats
+app.get("/user-stats/:email", async (req, res) => {
+  const email = req.params.email;
+  const query =
+    "SELECT status,COUNT(*) as count FROM manage_food WHERE recipientEmail=? GROUP BY status ";
+  db.query(query, [email], (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+    let resultObj = {};
+    results.forEach((result) => {
+      resultObj[result.status] = result.count;
+    });
+    res.send(resultObj);
+  });
+});
+// donor stats
+app.get("/donor-stats/:email", async (req, res) => {
+  const email = req.params.email;
+  const categoryQuery = `SELECT category, COUNT(*) as count FROM manage_food WHERE donorEmail=? GROUP BY category`;
+  const recipientCount =
+    "SELECT COUNT(DISTINCT recipientEmail) as totalRecipient FROM manage_food WHERE donorEmail=? ";
+  const statusQuery =
+    "SELECT status,COUNT(*) as count FROM foods WHERE email=? GROUP BY status ";
+  const totalAddedFoodQuery =
+    "SELECT COUNT(*) as totalFoodCount FROM foods WHERE email=?";
+  const deliveredQuery = `SELECT count(*) as count FROM manage_food WHERE deliveryStatus="delivered"`;
+  //  total recipient query
+  db.query(recipientCount, [email], (err, totalRecipient) => {
+    if (err) {
+      console.log(err);
+      return;
+    }
+    // categoryQuery
+    db.query(categoryQuery, [email], (err, categoryData) => {
+      if (err) {
+        console.log(err);
+        return;
+      }
+      // statusQuery
+      db.query(statusQuery, [email], (err, statusData) => {
+        if (err) {
+          console.log(err);
+        }
+        db.query(totalAddedFoodQuery, [email], (err, totalFood) => {
+          if (err) {
+            console.log(err);
+          }
+          db.query(deliveredQuery, (err, delivered) => {
+            if (err) {
+              console.log(err);
+            }
+            const responseData = {
+              categoryData,
+              totalRecipient: totalRecipient[0].totalRecipient,
+              statusData,
+              totalFood: totalFood[0].totalFoodCount,
+              delivered: delivered[0].count,
+            };
+            res.send(responseData);
+          });
+        });
+      });
+    });
+  });
+});
+// getting user
+app.get("/users/:email", async (req, res) => {
+  const email = req.params.email;
+  const query = "SELECT * FROM users WHERE email=?";
+  db.query(query, [email], async (err, results) => {
+    const user = results[0];
+    if (err) {
+      console.log(err);
+    }
+    res.send(user);
+  });
+});
 app.listen(port, () => {
   console.log("listening");
 });
