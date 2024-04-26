@@ -49,6 +49,11 @@ app.get("/chatbot", async (req, res) => {
     res.status(404).json("Sorry, I don't have an answer to that question.");
   }
 });
+// getting chatbot question
+app.get("/chatbot/question", async (req, res) => {
+  const question = Object.keys(knowledgeBase);
+  res.send(question);
+});
 app.get("/", (req, res) => {
   res.send("running");
 });
@@ -439,6 +444,8 @@ app.get("/user-stats/:email", async (req, res) => {
     res.send(resultObj);
   });
 });
+// get user
+
 // donor stats
 app.get("/donor-stats/:email", async (req, res) => {
   const email = req.params.email;
@@ -489,7 +496,33 @@ app.get("/donor-stats/:email", async (req, res) => {
     });
   });
 });
+app.get("/admin-stats", async (req, res) => {
+  const userQuery = `SELECT (SELECT COUNT(DISTINCT recipientEmail) FROM manage_food)as uniqueRecipients,(SELECT COUNT(DISTINCT email) FROM foods) as uniqueDonor ,(SELECT SUM(quantity)  FROM foods) AS totalQuantity,(SELECT COUNT(*) FROM foods ) AS totalFood,(SELECT  COUNT(*) FROM foods WHERE status="delivered") AS totalDelivered`;
+  // join query of avg expire date and  total quantity by donorEmail
+  const query = `SELECT t1.email,t1.totalQuantity,t2.avg_expire_date FROM(SELECT email,SUM(quantity) AS totalQuantity FROM foods GROUP BY email) AS t1 JOIN (SELECT email,ROUND(AVG(expire_date),2) AS avg_expire_date FROM foods GROUP BY email) AS t2 ON t1.email=t2.email`;
+
+  db.query(query, (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+    db.query(userQuery, (err, userResults) => {
+      if (err) {
+        console.log(err);
+      }
+      res.send({ results, userResults: userResults[0] });
+    });
+  });
+});
 // getting user
+app.get("/users", async (req, res) => {
+  const query = "SELECT * FROM users";
+  db.query(query, (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+    res.send(results);
+  });
+});
 app.get("/users/:email", async (req, res) => {
   const email = req.params.email;
   const query = "SELECT * FROM users WHERE email=?";
@@ -499,6 +532,72 @@ app.get("/users/:email", async (req, res) => {
       console.log(err);
     }
     res.send(user);
+  });
+});
+// delete user
+app.delete("/users/:email", async (req, res) => {
+  const email = req.params.email;
+  console.log(email);
+  const query = "DELETE FROM users WHERE email=?";
+  db.query(query, [email], (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+    res.send(results);
+  });
+});
+// update user role
+app.put("/users/:email", async (req, res) => {
+  const email = req.params.email;
+  const role = req.body.role;
+  console.log(email, role);
+  const query = "UPDATE users SET role=? WHERE email=?";
+
+  db.query(query, [role, email], (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+    res.send(results);
+  });
+});
+
+// rating
+app.post("/rating", async (req, res) => {
+  const { suggestion, feedback, name, email, userImage, ratingValue, date } =
+    req.body;
+
+  const query =
+    "INSERT INTO rating (suggestion,feedback,name,email,userImage,ratingValue,date) VALUES(?,?,?,?,?,?,?)";
+  db.query(
+    query,
+    [suggestion, feedback, name, email, userImage, ratingValue, date],
+    (err, results) => {
+      if (err) {
+        console.log(err);
+      }
+      res.send(results);
+    }
+  );
+});
+// get rating
+app.get("/rating", async (req, res) => {
+  const query = "SELECT * FROM rating ORDER BY date DESC";
+  db.query(query, (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+    res.send(results);
+  });
+});
+// delete rating
+app.delete("/rating/:id", async (req, res) => {
+  const id = req.params.id;
+  const query = "DELETE FROM rating WHERE id=?";
+  db.query(query, [id], (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+    res.send(results);
   });
 });
 app.listen(port, () => {
