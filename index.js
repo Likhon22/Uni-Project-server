@@ -111,6 +111,22 @@ app.get("/foods", (req, res) => {
     res.send(data);
   });
 });
+// getting food name
+
+app.get("/foods/food-name/:category", async (req, res) => {
+  const category = req.params.category;
+  const query = "SELECT food_name FROM foods WHERE category=?";
+  db.query(query, [category], (err, results) => {
+    if (err) {
+      console.log(err);
+    }
+    let foodName = [];
+    if (results) {
+      results.forEach((food) => foodName.push(food?.food_name));
+    }
+    res.send(foodName);
+  });
+});
 // unique category
 app.get("/unique-categories", (req, res) => {
   const query = "SELECT DISTINCT category, category_image FROM foods ";
@@ -127,12 +143,18 @@ app.get("/unique-categories", (req, res) => {
 app.get("/foods/:category", async (req, res) => {
   const category = req.params.category;
   const orderBy = req.query.sort;
+  const search = req.query.name;
+  console.log(search);
 
   let food = `SELECT * FROM foods WHERE category=?`;
-  if (orderBy) {
-    food += `ORDER BY ${orderBy}`;
+  if (search) {
+    food += ` AND food_name=?`;
   }
-  db.query(food, [category], (err, results) => {
+  if (orderBy) {
+    food += ` ORDER BY ${orderBy}`;
+  }
+
+  db.query(food, [category, search], (err, results) => {
     if (err) {
       console.log(err);
     }
@@ -456,7 +478,7 @@ app.get("/donor-stats/:email", async (req, res) => {
     "SELECT status,COUNT(*) as count FROM foods WHERE email=? GROUP BY status ";
   const totalAddedFoodQuery =
     "SELECT COUNT(*) as totalFoodCount FROM foods WHERE email=?";
-  const deliveredQuery = `SELECT count(*) as count FROM manage_food WHERE deliveryStatus="delivered"`;
+  const deliveredQuery = `SELECT count(*) as count FROM manage_food WHERE deliveryStatus="delivered" AND donorEmail=?`;
   //  total recipient query
   db.query(recipientCount, [email], (err, totalRecipient) => {
     if (err) {
@@ -478,7 +500,7 @@ app.get("/donor-stats/:email", async (req, res) => {
           if (err) {
             console.log(err);
           }
-          db.query(deliveredQuery, (err, delivered) => {
+          db.query(deliveredQuery, [email], (err, delivered) => {
             if (err) {
               console.log(err);
             }
